@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+    // Perfil de usuario: solo la propia persona puede leer o escribir su perfil.
+    match /users/{userId} {
+      allow read, write: if estaAutenticado() && request.auth.uid == userId;
+
+      // Reportes: subcolección privada, solo visible/editable por su dueña.
+      match /reports/{reportId} {
+        allow read, create, update, delete: if estaAutenticado() && request.auth.uid == userId;
+      }
+    }
+
+    // Plaza principal: cualquier usuaria autenticada puede leer y publicar.
+    // Solo puede editar/borrar sus propios posts.
+    match /plazaPosts/{postId} {
+      allow read: if estaAutenticado();
+      allow create: if estaAutenticado() && request.resource.data.authorUid == request.auth.uid;
+      allow update: if estaAutenticado(); // permite el contador de likes de cualquiera
+      allow delete: if estaAutenticado() && resource.data.authorUid == request.auth.uid;
+    }
+
+    // Comunidades y sus posts: lectura abierta a autenticadas, escritura
+    // controlada de forma similar a la Plaza.
+    match /communities/{communityId} {
+      allow read: if estaAutenticado();
+      allow create: if estaAutenticado();
+      allow update: if estaAutenticado();
+
+      match /posts/{postId} {
+        allow read: if estaAutenticado();
+        allow create: if estaAutenticado() && request.resource.data.authorUid == request.auth.uid;
+        allow update: if estaAutenticado();
+        allow delete: if estaAutenticado() && resource.data.authorUid == request.auth.uid;
+      }
+    }
+  }
+}
