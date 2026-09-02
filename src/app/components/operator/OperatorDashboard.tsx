@@ -60,11 +60,15 @@ export function OperatorDashboard({
     label: string;
   } | null>(null);
 
-  // Escuchar tecla ESC para cerrar modales
+  // Estado para visor modal de imagen / evidencia (Lightbox)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // Escuchar tecla ESC para cerrar cualquier modal abierto
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       setEditingDenuncia(null);
       setDeleteModal(null);
+      setSelectedImage(null);
     }
   }, []);
 
@@ -73,7 +77,7 @@ export function OperatorDashboard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // Memoización para filtrado seguro y optimizado de denuncias
+  // Memoización para filtrado de denuncias
   const filteredDenuncias = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
     return (denuncias || []).filter((d) => {
@@ -150,7 +154,7 @@ export function OperatorDashboard({
     }
   };
 
-  // PANTALLA DE BLOQUEO SI NO ES DOMINIO UNIVALLE
+  // Bloqueo si no pertenece al dominio permitido
   if (!isAllowedDomain) {
     return (
       <div className="min-h-screen bg-[#FFFDF7] flex items-center justify-center p-4 font-sans">
@@ -197,7 +201,7 @@ export function OperatorDashboard({
       </div>
 
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Banner de estadísticas rápidas */}
+        {/* Banner de estadísticas */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between text-gray-500 mb-1">
@@ -320,7 +324,7 @@ export function OperatorDashboard({
                   ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(denuncia.lugar)}`
                   : null;
 
-                const evidenciasList = denuncia.evidencias || (denuncia as any).evidence || [];
+                const evidenciasList = denuncia.evidencias || (denuncia as any).evidence || (denuncia as any).evidenceUrls || [];
 
                 return (
                   <div
@@ -341,7 +345,7 @@ export function OperatorDashboard({
                             Anónimo
                           </span>
                         )}
-                        <span className="text-[11px] text-gray-400">• {denuncia.fechaRegistro}</span>
+                        <span className="text-[11px] text-gray-400">• {denuncia.fecha}</span>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -424,7 +428,7 @@ export function OperatorDashboard({
                       </div>
                     </div>
 
-                    {/* Galería de evidencias */}
+                    {/* Galería de evidencias con apertura garantizada */}
                     {Array.isArray(evidenciasList) && evidenciasList.length > 0 && (
                       <div className="pt-1">
                         <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1 mb-2">
@@ -437,16 +441,12 @@ export function OperatorDashboard({
                             const isValidUrl = typeof rawUrl === 'string' && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'));
 
                             return (
-                              <a
+                              <button
                                 key={idx}
-                                href={isValidUrl ? rawUrl : '#'}
-                                target={isValidUrl ? "_blank" : "_self"}
-                                rel="noopener noreferrer"
-                                onClick={(e) => {
-                                  if (!isValidUrl) e.preventDefault();
-                                }}
-                                title={isValidUrl ? "Ver evidencia" : String(rawUrl)}
-                                className="group relative flex flex-col items-center justify-center w-20 h-20 rounded-xl border border-gray-200 bg-gray-50 flex-shrink-0 shadow-sm transition-all hover:border-red-500 overflow-hidden"
+                                type="button"
+                                onClick={() => setSelectedImage(rawUrl)}
+                                title={`Clic para inspeccionar: ${rawUrl}`}
+                                className="group relative flex flex-col items-center justify-center w-20 h-20 rounded-xl border border-gray-200 bg-gray-50 flex-shrink-0 shadow-sm transition-all hover:border-red-500 hover:shadow-md overflow-hidden text-left cursor-pointer"
                               >
                                 {isValidUrl ? (
                                   <>
@@ -455,7 +455,8 @@ export function OperatorDashboard({
                                       alt={`Evidencia ${idx + 1}`}
                                       className="w-full h-full object-cover group-hover:scale-110 transition duration-200"
                                       onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = 'none';
+                                        console.warn("Error cargando la imagen:", rawUrl);
+                                        (e.target as HTMLImageElement).src = "https://placehold.co/150x150?text=Error+Imagen";
                                       }}
                                     />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
@@ -463,14 +464,14 @@ export function OperatorDashboard({
                                     </div>
                                   </>
                                 ) : (
-                                  <div className="flex flex-col items-center justify-center p-2 text-center text-gray-400 group-hover:text-red-500 transition">
-                                    <Paperclip className="w-5 h-5 mb-1" />
-                                    <span className="text-[9px] font-semibold truncate max-w-[64px]">
+                                  <div className="flex flex-col items-center justify-center p-2 text-center text-gray-500 group-hover:text-red-500 transition">
+                                    <Paperclip className="w-5 h-5 mb-1 text-red-500" />
+                                    <span className="text-[9px] font-semibold truncate max-w-[64px] text-gray-700">
                                       {String(rawUrl || `Adjunto ${idx + 1}`)}
                                     </span>
                                   </div>
                                 )}
-                              </a>
+                              </button>
                             );
                           })}
                         </div>
@@ -696,6 +697,67 @@ export function OperatorDashboard({
               >
                 Eliminar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL VISOR DE EVIDENCIA (LIGHTBOX ADAPTATIVO) */}
+      {selectedImage && (
+        <div 
+          className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 transition-all duration-200"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-2xl flex flex-col items-center justify-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedImage(null)}
+              className="absolute top-3 right-3 z-10 p-2 bg-black/60 hover:bg-red-600 text-white rounded-full transition shadow-md"
+              title="Cerrar modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="p-2 flex items-center justify-center max-h-[75vh] w-full min-h-[220px]">
+              {selectedImage.startsWith('http://') || selectedImage.startsWith('https://') ? (
+                <img
+                  src={selectedImage}
+                  alt="Vista previa amplia de la evidencia"
+                  className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-inner"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "https://placehold.co/600x400?text=No+se+pudo+cargar+la+imagen";
+                  }}
+                />
+              ) : (
+                <div className="bg-gray-800 border border-gray-700 text-gray-200 p-8 rounded-2xl text-center space-y-3 max-w-md">
+                  <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
+                  <h4 className="text-base font-bold text-white">Archivo sin URL de Cloudinary</h4>
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    Este reporte fue guardado con el nombre local <strong className="text-amber-400 font-mono">{selectedImage}</strong> en lugar de subir el archivo a la nube.
+                  </p>
+                  <div className="text-[11px] bg-gray-900/80 p-3 rounded-xl border border-gray-700/50 text-gray-400 text-left font-mono">
+                    💡 <strong>Solución:</strong> Las denuncias creadas a partir de ahora con el arreglo de Cloudinary registrarán los enlaces <code className="text-emerald-400">https://res.cloudinary.com/...</code> directamente.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="w-full pt-3 pb-2 px-4 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-gray-800 text-xs text-gray-300">
+              <span className="truncate max-w-full sm:max-w-[70%] font-mono text-[11px] text-gray-400">
+                {selectedImage}
+              </span>
+              {(selectedImage.startsWith('http://') || selectedImage.startsWith('https://')) && (
+                <a
+                  href={selectedImage}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-red-400 hover:text-red-300 font-semibold underline text-xs transition"
+                >
+                  Abrir enlace original <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
             </div>
           </div>
         </div>

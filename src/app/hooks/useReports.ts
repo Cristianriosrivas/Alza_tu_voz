@@ -35,6 +35,8 @@ export interface Report {
   fechaIncidente?: string;
   witnesses?: string;
   evidence?: string[];
+  evidenceUrls?: string[];
+  evidencias?: string[];
   isAnonymous: boolean;
   authorId?: string;
   authorName?: string;
@@ -82,6 +84,7 @@ export function useReports() {
         const docs: Report[] = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
           const currentStatus = data.status || data.estado || 'Pendiente';
+          const rawUrls = data.evidenceUrls || data.evidence || data.evidencias || [];
 
           return {
             id: docSnap.id,
@@ -91,7 +94,9 @@ export function useReports() {
             location: data.location || data.lugar || '',
             dateIncident: data.dateIncident || data.fechaIncidente || data.date || '',
             witnesses: data.witnesses || data.testigos || '',
-            evidence: data.evidence || data.evidenceUrls || data.evidencias || [],
+            evidence: rawUrls,
+            evidenceUrls: rawUrls,
+            evidencias: rawUrls,
             isAnonymous: data.isAnonymous ?? data.esAnonimo ?? false,
             authorId: data.authorId || userId,
             authorName: data.authorName || currentUser?.displayName || '',
@@ -116,7 +121,7 @@ export function useReports() {
   }, [userId, currentUser]);
 
   // 3. Crear denuncia con historial de seguimiento (Timeline) inicial
-  const addReport = async (newReportData: Partial<Report>) => {
+  const addReport = async (newReportData: any) => {
     try {
       const initialTimelineItem: ReportTimelineItem = {
         id: Date.now().toString(),
@@ -128,14 +133,25 @@ export function useReports() {
 
       const isAnon = newReportData.isAnonymous ?? false;
 
+      // Unificamos las URLs de evidencia provenientes de Cloudinary
+      const urls: string[] = newReportData.evidenceUrls || 
+        (Array.isArray(newReportData.evidence) && typeof newReportData.evidence[0] === 'string' ? newReportData.evidence : []) || 
+        (Array.isArray(newReportData.evidencias) && typeof newReportData.evidencias[0] === 'string' ? newReportData.evidencias : []);
+
       await addDoc(collection(db, 'reports'), {
         trackingCode: Date.now().toString(36).toUpperCase(),
         category: newReportData.category || newReportData.categoria || 'General',
         description: newReportData.description || '',
         location: newReportData.location || newReportData.lugar || '',
-        dateIncident: newReportData.dateIncident || newReportData.fechaIncidente || '',
+        dateIncident: newReportData.dateIncident || newReportData.fechaIncidente || newReportData.date || '',
         witnesses: newReportData.witnesses || '',
-        evidenceUrls: newReportData.evidence || [],
+        witnessDetails: newReportData.witnessDetails || '',
+        
+        // Se guardan las URLs en las 3 claves para garantizar lectura en el panel de operador
+        evidence: urls,
+        evidenceUrls: urls,
+        evidencias: urls,
+
         isAnonymous: isAnon,
         authorId: userId || null,
         authorName: isAnon ? 'Anónimo' : (newReportData.authorName || currentUser?.displayName || 'Usuario'),
@@ -149,6 +165,7 @@ export function useReports() {
       });
     } catch (error) {
       console.error('Error al agregar denuncia en Firebase:', error);
+      throw error;
     }
   };
 
