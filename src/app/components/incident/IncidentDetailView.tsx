@@ -17,6 +17,7 @@ import {
   Trash2,
   AlertTriangle
 } from 'lucide-react';
+import { uploadMultipleToCloudinary } from '../../../lib/cloudinary';
 
 interface IncidentData {
   id?: string;
@@ -72,11 +73,16 @@ export function IncidentDetailView({ onBack, incidentData, onUpdateReport, onDel
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [isSaved, setIsSaved] = useState(false);
 
+  // Estado de subida a Cloudinary y errores del proceso de guardado
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   // Abrir modal de edición y cargar datos actuales
   const handleOpenEditModal = () => {
     setFormData({ ...currentData });
     setNewFiles([]);
     setIsSaved(false);
+    setUploadError(null);
     setShowEditModal(true);
   };
 
@@ -85,31 +91,50 @@ export function IncidentDetailView({ onBack, incidentData, onUpdateReport, onDel
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Guardar los cambios actualizados
-  const handleSaveChanges = (e: React.FormEvent) => {
+  // Guardar los cambios actualizados: primero sube las nuevas evidencias a
+  // Cloudinary y solo después persiste las URLs resultantes (nunca el
+  // nombre local del archivo).
+  const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadError(null);
+    setIsUploading(true);
 
-    const updatedEvidenceNames = [
-      ...(currentData.evidence || []),
-      ...newFiles.map((file) => file.name)
-    ];
+    try {
+      let newEvidenceUrls: string[] = [];
+      if (newFiles.length > 0) {
+        newEvidenceUrls = await uploadMultipleToCloudinary(newFiles);
+      }
 
-    const updatedReport: IncidentData = {
-      ...formData,
-      evidence: updatedEvidenceNames
-    };
+      const updatedEvidence = [
+        ...(currentData.evidence || []),
+        ...newEvidenceUrls
+      ];
 
-    setCurrentData(updatedReport);
+      const updatedReport: IncidentData = {
+        ...formData,
+        evidence: updatedEvidence
+      };
 
-    if (onUpdateReport) {
-      onUpdateReport(updatedReport);
+      setCurrentData(updatedReport);
+
+      if (onUpdateReport) {
+        onUpdateReport(updatedReport);
+      }
+
+      setNewFiles([]);
+      setIsSaved(true);
+      setTimeout(() => {
+        setIsSaved(false);
+        setShowEditModal(false);
+      }, 1200);
+    } catch (err: any) {
+      console.error('Error al subir evidencia a Cloudinary:', err);
+      setUploadError(
+        err?.message || 'No se pudo subir la evidencia a Cloudinary. Intenta de nuevo.'
+      );
+    } finally {
+      setIsUploading(false);
     }
-
-    setIsSaved(true);
-    setTimeout(() => {
-      setIsSaved(false);
-      setShowEditModal(false);
-    }, 1200);
   };
 
   // Confirmar y eliminar denuncia
@@ -274,6 +299,13 @@ export function IncidentDetailView({ onBack, incidentData, onUpdateReport, onDel
               </div>
             ) : (
               <form onSubmit={handleSaveChanges} className="space-y-4">
+                {uploadError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+
                 {/* Fecha y Hora */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -351,9 +383,11 @@ export function IncidentDetailView({ onBack, incidentData, onUpdateReport, onDel
                     <input
                       type="file"
                       multiple
+                      accept="image/*"
                       onChange={(e) => e.target.files && setNewFiles(Array.from(e.target.files))}
                       className="hidden"
                       id="edit-file-input"
+                      disabled={isUploading}
                     />
                     <label htmlFor="edit-file-input" className="cursor-pointer flex flex-col items-center gap-1">
                       <Upload className="w-5 h-5 text-gray-400" />
@@ -378,16 +412,18 @@ export function IncidentDetailView({ onBack, incidentData, onUpdateReport, onDel
                   <button
                     type="button"
                     onClick={() => setShowEditModal(false)}
-                    className="w-1/3 py-2.5 rounded-xl text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                    disabled={isUploading}
+                    className="w-1/3 py-2.5 rounded-xl text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="w-2/3 bg-[#FF5A93] text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-[#e0487f] transition flex items-center justify-center gap-1.5 shadow-sm"
+                    disabled={isUploading}
+                    className="w-2/3 bg-[#FF5A93] text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-[#e0487f] transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
-                    Guardar Cambios
+                    {isUploading ? 'Subiendo evidencia...' : 'Guardar Cambios'}
                   </button>
                 </div>
               </form>

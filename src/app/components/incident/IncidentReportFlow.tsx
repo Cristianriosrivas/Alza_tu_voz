@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useReports } from '../hooks/useReports';[cite: 12, 13]
+import { useReports } from '../../hooks/useReports';
+import { uploadMultipleToCloudinary } from '../../../lib/cloudinary';
 
 interface IncidentReportData {
   title: string;
@@ -13,32 +14,6 @@ interface IncidentReportFlowProps {
   onComplete?: (data: any) => void;
 }
 
-// Función auxiliar para subir imágenes a Cloudinary[cite: 12]
-const uploadToCloudinary = async (files: File[]): Promise<string[]> => {
-  const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME || 'tu_cloud_name';
-  const uploadPreset = process.env.REACT_APP_CLOUDINARY_PRESET || 'tu_upload_preset';
-
-  const uploadPromises = files.map(async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', uploadPreset);
-
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Error al subir la imagen: ${file.name}`);
-    }
-
-    const data = await res.json();
-    return data.secure_url as string;
-  });
-
-  return Promise.all(uploadPromises);
-};
-
 export const IncidentReportFlow: React.FC<IncidentReportFlowProps> = ({ onComplete }) => {
   const { addReport } = useReports();
   const [loading, setLoading] = useState(false);
@@ -49,7 +24,7 @@ export const IncidentReportFlow: React.FC<IncidentReportFlowProps> = ({ onComple
     description: '',
     location: '',
     category: 'General',
-    evidence: [],[cite: 12]
+    evidence: [],
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,13 +42,15 @@ export const IncidentReportFlow: React.FC<IncidentReportFlowProps> = ({ onComple
     setError(null);
 
     try {
-      // 1. Procesar subida de evidencia a Cloudinary[cite: 12]
+      // 1. Procesar subida de evidencia a Cloudinary (usando la config
+      //    compartida de src/lib/cloudinary.ts, con las variables de
+      //    entorno de Vite ya configuradas correctamente).
       let evidenceUrls: string[] = [];
       if (formData.evidence.length > 0) {
-        evidenceUrls = await uploadToCloudinary(formData.evidence);
+        evidenceUrls = await uploadMultipleToCloudinary(formData.evidence);
       }
 
-      // 2. Preparar el objeto con las URLs públicas generadas[cite: 12]
+      // 2. Preparar el objeto con las URLs públicas generadas
       const finalReportData = {
         title: formData.title,
         description: formData.description,
@@ -83,12 +60,12 @@ export const IncidentReportFlow: React.FC<IncidentReportFlowProps> = ({ onComple
         evidencias: evidenceUrls,
       };
 
-      // 3. Guardar en Firestore[cite: 13]
+      // 3. Guardar en Firestore
       await addReport(finalReportData);
 
-      // 4. Disparar callback de completado[cite: 12]
+      // 4. Disparar callback de completado
       if (onComplete) {
-        onComplete(finalReportData);[cite: 12]
+        onComplete(finalReportData);
       }
     } catch (err: any) {
       setError(err.message || 'Error al enviar la denuncia');
