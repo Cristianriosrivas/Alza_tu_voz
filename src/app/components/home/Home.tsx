@@ -90,9 +90,6 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
       {/* Header Superior */}
       <header className="flex justify-between items-center px-6 py-4 bg-white border-b border-gray-100 sticky top-0 z-40 shadow-xs">
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-[#6d28d9] flex items-center justify-center text-white font-bold text-lg shadow-sm">
-            A
-          </div>
           <h1 className="text-xl font-bold text-[#6d28d9] tracking-tight">Alza Tu Voz</h1>
         </div>
         

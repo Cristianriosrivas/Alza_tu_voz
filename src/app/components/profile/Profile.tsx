@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, User, Bell, Lock, LogOut, ChevronRight, Save, Clock, CheckCircle, AlertCircle, Shield, Calendar } from 'lucide-react';
+import { ArrowLeft, User, Lock, LogOut, ChevronRight, Save, Clock, CheckCircle, AlertCircle, XCircle, Shield, Calendar } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface Report {
@@ -7,7 +7,7 @@ interface Report {
   date: string;
   time: string;
   location: string;
-  status: 'En revisión' | 'En proceso' | 'Completado';
+  status: 'Pendiente' | 'En Proceso' | 'Resuelto' | 'Rechazado' | string;
   description: string;
 }
 
@@ -15,6 +15,9 @@ interface ProfileProps {
   onBack: () => void;
   onLogout: () => void;
   reports: Report[];
+  // Momento en que se creó la sesión de la pestaña (se define una sola vez
+  // en App.tsx al cargar la página, no al entrar a esta pantalla).
+  sessionStart: Date;
 }
 
 function formatElapsedTime(startTime: Date): string {
@@ -29,12 +32,15 @@ function formatElapsedTime(startTime: Date): string {
   return `${hours}h ${mins}m`;
 }
 
-export function Profile({ onBack, onLogout, reports }: ProfileProps) {
+// Los 4 estados reales que asigna el Modo Operador (useOperator.ts /
+// OperatorDashboard.tsx). Deben coincidir EXACTAMENTE con esas cadenas.
+const STATUS_LIST = ['Pendiente', 'En Proceso', 'Resuelto', 'Rechazado'] as const;
+
+export function Profile({ onBack, onLogout, reports, sessionStart }: ProfileProps) {
   const { profile, updateUserProfile } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [selectedView, setSelectedView] = useState<string | null>(null);
-  const [elapsed, setElapsed] = useState('0s');
-  const [sessionStart] = useState(() => new Date());
+  const [elapsed, setElapsed] = useState(() => formatElapsedTime(sessionStart));
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: profile?.name || '',
@@ -58,6 +64,9 @@ export function Profile({ onBack, onLogout, reports }: ProfileProps) {
     }
   }, [profile]);
 
+  // Recalcula el tiempo transcurrido cada segundo, siempre en base al
+  // sessionStart real (desde que se entró a la página), no desde que se
+  // abrió esta pantalla.
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsed(formatElapsedTime(sessionStart));
@@ -67,33 +76,34 @@ export function Profile({ onBack, onLogout, reports }: ProfileProps) {
 
   const menuItems = [
     { icon: User, label: 'Editar información', id: 'edit' },
-    { icon: Bell, label: 'Preferencias de notificación', id: 'notifications' },
     { icon: Lock, label: 'Privacidad y seguridad', id: 'privacy' },
   ];
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'En revisión': return 'bg-[#FFF5E2] text-[#F5A623] border-[#FFC04D]';
-      case 'En proceso': return 'bg-[#ECE8FF] text-[#563AC1] border-[#6A4AE3]';
-      case 'Completado': return 'bg-[#E8FCEF] text-[#31A862] border-[#3FBF74]';
+      case 'Pendiente': return 'bg-[#FFF5E2] text-[#F5A623] border-[#FFC04D]';
+      case 'En Proceso': return 'bg-[#ECE8FF] text-[#563AC1] border-[#6A4AE3]';
+      case 'Resuelto': return 'bg-[#E8FCEF] text-[#31A862] border-[#3FBF74]';
+      case 'Rechazado': return 'bg-[#F3F3F3] text-[#6B6B6B] border-[#B6B6B6]';
       default: return 'bg-[#F3F3F3] text-[#4A4A4A] border-[#B6B6B6]';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'En revisión': return <Clock className="w-3.5 h-3.5" />;
-      case 'En proceso': return <AlertCircle className="w-3.5 h-3.5" />;
-      case 'Completado': return <CheckCircle className="w-3.5 h-3.5" />;
+      case 'Pendiente': return <Clock className="w-3.5 h-3.5" />;
+      case 'En Proceso': return <AlertCircle className="w-3.5 h-3.5" />;
+      case 'Resuelto': return <CheckCircle className="w-3.5 h-3.5" />;
+      case 'Rechazado': return <XCircle className="w-3.5 h-3.5" />;
       default: return null;
     }
   };
 
-  const statusCounts = {
-    'En revisión': reports.filter(r => r.status === 'En revisión').length,
-    'En proceso': reports.filter(r => r.status === 'En proceso').length,
-    'Completado': reports.filter(r => r.status === 'Completado').length,
-  };
+  // Contadores en base a los 4 estados reales que asigna el operador.
+  const statusCounts = STATUS_LIST.reduce((acc, status) => {
+    acc[status] = reports.filter((r) => r.status === status).length;
+    return acc;
+  }, {} as Record<typeof STATUS_LIST[number], number>);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -264,11 +274,11 @@ export function Profile({ onBack, onLogout, reports }: ProfileProps) {
             <p className="text-[#9A9A9A] text-sm">Aún no tienes denuncias registradas.</p>
           ) : (
             <>
-              {/* Contadores por estado */}
-              <div className="grid grid-cols-3 gap-3">
-                {(Object.entries(statusCounts) as [string, number][]).map(([status, count]) => (
+              {/* Contadores por estado (mismos 4 estados que usa el Modo Operador) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {STATUS_LIST.map((status) => (
                   <div key={status} className={`rounded-xl p-3 border text-center ${getStatusColor(status)}`}>
-                    <p className="text-xl font-bold">{count}</p>
+                    <p className="text-xl font-bold">{statusCounts[status]}</p>
                     <p className="text-xs mt-0.5 font-medium">{status}</p>
                   </div>
                 ))}

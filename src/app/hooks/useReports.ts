@@ -26,14 +26,18 @@ export interface ReportTimelineItem {
 export interface Report {
   id: string;
   codigoSeguimiento?: string;
+  title?: string;
   category?: string;
   categoria?: string;
   description: string;
   location?: string;
   lugar?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   dateIncident?: string;
   fechaIncidente?: string;
   witnesses?: string;
+  witnessDetails?: string;
   evidence?: string[];
   evidenceUrls?: string[];
   evidencias?: string[];
@@ -89,11 +93,15 @@ export function useReports() {
           return {
             id: docSnap.id,
             codigoSeguimiento: data.trackingCode || data.codigoSeguimiento || docSnap.id.substring(0, 8).toUpperCase(),
+            title: data.title || '',
             category: data.category || data.categoria || 'General',
             description: data.description || data.descripcion || '',
             location: data.location || data.lugar || '',
+            latitude: data.latitude ?? null,
+            longitude: data.longitude ?? null,
             dateIncident: data.dateIncident || data.fechaIncidente || data.date || '',
             witnesses: data.witnesses || data.testigos || '',
+            witnessDetails: data.witnessDetails || '',
             evidence: rawUrls,
             evidenceUrls: rawUrls,
             evidencias: rawUrls,
@@ -140,13 +148,16 @@ export function useReports() {
 
       await addDoc(collection(db, 'reports'), {
         trackingCode: Date.now().toString(36).toUpperCase(),
+        title: newReportData.title || '',
         category: newReportData.category || newReportData.categoria || 'General',
         description: newReportData.description || '',
         location: newReportData.location || newReportData.lugar || '',
+        latitude: newReportData.latitude ?? null,
+        longitude: newReportData.longitude ?? null,
         dateIncident: newReportData.dateIncident || newReportData.fechaIncidente || newReportData.date || '',
         witnesses: newReportData.witnesses || '',
         witnessDetails: newReportData.witnessDetails || '',
-        
+
         // Se guardan las URLs en las 3 claves para garantizar lectura en el panel de operador
         evidence: urls,
         evidenceUrls: urls,

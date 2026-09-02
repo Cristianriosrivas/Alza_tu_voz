@@ -12,13 +12,43 @@ import { BottomNavigation } from './components/shared/BottomNavigation';
 import { IncidentDetailView } from './components/incident/IncidentDetailView';
 import { OperatorDashboard } from './components/operator/OperatorDashboard';
 
+const SESSION_START_KEY = 'atv_session_start';
+
+// Recupera el inicio de sesión guardado en esta pestaña, o lo crea si es
+// la primera vez que se carga la app. Al usar sessionStorage (en vez de
+// solo un useState), el contador sobrevive a un F5 y sigue contando desde
+// el momento real en que se entró a la página, no desde que se abrió
+// la pantalla de "Mi perfil".
+function getOrCreateSessionStart(): Date {
+  try {
+    const stored = sessionStorage.getItem(SESSION_START_KEY);
+    if (stored) return new Date(stored);
+  } catch {
+    // sessionStorage no disponible (modo incógnito estricto, etc.)
+  }
+  const now = new Date();
+  try {
+    sessionStorage.setItem(SESSION_START_KEY, now.toISOString());
+  } catch {
+    // si falla el guardado, igual devolvemos "now" para no romper la UI
+  }
+  return now;
+}
+
 function AppContent() {
   const { user, profile, loading, logout } = useAuth();
-  const { reports, addReport, deleteReport, updateReport } = useReports();
+  // addReport se quitó de aquí: IncidentReportFlow ya guarda el reporte
+  // internamente con su propia instancia de useReports(). Si App.tsx
+  // también llamara a addReport, cada envío crearía DOS documentos.
+  const { reports, deleteReport, updateReport } = useReports();
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('home');
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+
+  // Se crea UNA sola vez al montar App (es decir, al entrar a la página),
+  // no cada vez que se navega a "Mi perfil".
+  const [sessionStart] = useState<Date>(() => getOrCreateSessionStart());
 
   // Extraer correo de la sesión actual
   const userEmail = user?.email || profile?.email || '';
@@ -35,20 +65,9 @@ function AppContent() {
     setSelectedReportId(null);
   };
 
-  const handleCompleteReport = async (data: any) => {
-    addReport({
-      date: data.date,
-      time: data.time,
-      location: data.location,
-      description: data.description,
-      witnesses:
-        data.witnesses === 'yes'
-          ? data.witnessDetails
-          : data.witnesses === 'no'
-          ? 'No hubo testigos'
-          : 'No está segura',
-      evidence: data.evidence ? data.evidence.map((file: File) => file.name) : [],
-    });
+  // El reporte YA fue guardado en Firestore dentro de IncidentReportFlow.
+  // Aquí solo reaccionamos navegando a la pantalla de "Mis denuncias".
+  const handleCompleteReport = () => {
     setCurrentScreen('denuncias');
   };
 
@@ -74,6 +93,13 @@ function AppContent() {
 
   const handleLogout = async () => {
     await logout();
+    // Limpiamos el contador de sesión para que la próxima persona que
+    // inicie sesión en esta pestaña empiece su propio conteo desde cero.
+    try {
+      sessionStorage.removeItem(SESSION_START_KEY);
+    } catch {
+      // no-op
+    }
     setCurrentScreen('home');
   };
 
@@ -104,7 +130,7 @@ function AppContent() {
       {currentScreen === 'registrar' && (
         <IncidentReportFlow
           onComplete={handleCompleteReport}
-          onCancel={() => setCurrentScreen('home')}
+          onBack={() => setCurrentScreen('home')}
         />
       )}
 
@@ -130,7 +156,12 @@ function AppContent() {
       {currentScreen === 'comunidad' && <Community onBack={() => setCurrentScreen('home')} />}
 
       {currentScreen === 'perfil' && (
-        <Profile onBack={() => setCurrentScreen('home')} onLogout={handleLogout} reports={reports} />
+        <Profile
+          onBack={() => setCurrentScreen('home')}
+          onLogout={handleLogout}
+          reports={reports}
+          sessionStart={sessionStart}
+        />
       )}
 
       {/* Pantalla del Operador */}
